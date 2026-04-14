@@ -1,0 +1,29 @@
+name: Ireland Visa Decision Tracker
+
+on:
+  schedule:
+    - cron: "40 5 * * *"   # 11:10 AM IST = 05:40 UTC, runs every day
+  workflow_dispatch:        # Allows manual trigger from the GitHub Actions tab
+
+jobs:
+  check-visa:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run visa tracker
+        env:
+          APPLICATION_NUMBERS: ${{ secrets.APPLICATION_NUMBERS }}
+          GMAIL_USER:          ${{ secrets.GMAIL_USER }}
+          GMAIL_PASS:          ${{ secrets.GMAIL_PASS }}
+          NOTIFY_EMAIL:        ${{ secrets.NOTIFY_EMAIL }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python visa_tracker.py
