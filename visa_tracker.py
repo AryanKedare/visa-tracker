@@ -13,7 +13,7 @@ import sys
 import os
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # Install dependencies before any third-party imports
 subprocess.check_call(
@@ -28,6 +28,9 @@ from odf.opendocument import load as load_ods
 from odf.table import Table, TableRow, TableCell
 from odf.text import P
 from odf.namespaces import TABLENS
+
+# IST = UTC+5:30
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # --- ALL CONFIG FROM GITHUB SECRETS (environment variables) ---
 # APPLICATION_NUMBERS secret format: "12345678,87654321"
@@ -148,7 +151,8 @@ def notify(subject, message):
 
 
 def main():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M IST")
+    # Always use IST (UTC+5:30) regardless of GitHub Actions server timezone (UTC)
+    now = datetime.now(tz=IST).strftime("%Y-%m-%d %I:%M %p IST")
 
     if not APPLICATION_NUMBERS:
         print("  x No application numbers found. Set the APPLICATION_NUMBERS GitHub Secret.")
@@ -163,7 +167,7 @@ def main():
         download_ods(ods_url)
         all_rows = load_all_rows()
 
-        pending = []   # applications with no decision yet
+        pending = []
 
         for app_number in APPLICATION_NUMBERS:
             matches = search_application(all_rows, app_number)
@@ -183,7 +187,6 @@ def main():
             else:
                 pending.append(app_number)
 
-        # Send a single daily summary for all pending applications
         if pending:
             pending_list = "\n".join(f"  - {n}" for n in pending)
             message = (
