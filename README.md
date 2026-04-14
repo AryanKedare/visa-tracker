@@ -2,8 +2,6 @@
 
 Automatically checks the Irish Embassy New Delhi visa decisions list every day at **11:10 AM IST**.
 
-✅ **Safe for a public repository** — no credentials, no application numbers, nothing private is committed to this repo. Everything is stored as GitHub Secrets.
-
 **Source page:** https://www.ireland.ie/en/india/newdelhi/services/visas/processing-times-and-decisions/
 
 ---
