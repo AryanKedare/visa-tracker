@@ -5,16 +5,28 @@ Scrapes: ireland.ie/en/india/newdelhi/services/visas/processing-times-and-decisi
 Schedule: daily at 11:10 AM IST (05:40 UTC) via GitHub Actions
 
 All credentials and application numbers are read from environment variables (GitHub Secrets).
-Safe to use in a public repository — nothing sensitive is hardcoded.
+Safe to use in a public repository - nothing sensitive is hardcoded.
 """
 
-import requests
 import subprocess
 import sys
 import os
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
+
+# Install dependencies before any third-party imports
+subprocess.check_call(
+    [sys.executable, "-m", "pip", "install", "-q",
+     "requests", "beautifulsoup4", "odfpy", "lxml"],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+)
+
+import requests
+from bs4 import BeautifulSoup
+from odf.opendocument import load as load_ods
+from odf.table import Table, TableRow, TableCell
+from odf.text import P
 
 # --- ALL CONFIG FROM GITHUB SECRETS (environment variables) ---
 # APPLICATION_NUMBERS secret format: "12345678,87654321"
@@ -30,16 +42,7 @@ GMAIL_USER         = os.environ.get("GMAIL_USER", "")
 GMAIL_PASS         = os.environ.get("GMAIL_PASS", "")
 
 
-def install_deps():
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "-q",
-         "requests", "beautifulsoup4", "odfpy", "lxml"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-
-
 def get_latest_ods_url():
-    from bs4 import BeautifulSoup
     headers = {"User-Agent": "Mozilla/5.0 (compatible; VisaTracker/1.0)"}
     resp = requests.get(DECISIONS_PAGE_URL, headers=headers, timeout=30)
     resp.raise_for_status()
@@ -57,7 +60,7 @@ def get_latest_ods_url():
                 return "https://www.ireland.ie/" + href
     raise RuntimeError(
         f"No .ods file link found on: {DECISIONS_PAGE_URL}\n"
-        "The page structure may have changed — check manually."
+        "The page structure may have changed - check manually."
     )
 
 
@@ -67,15 +70,11 @@ def download_ods(ods_url):
     resp.raise_for_status()
     with open(ODS_FILE_PATH, "wb") as f:
         f.write(resp.content)
-    print(f"  ✔ Downloaded: {ods_url}")
+    print(f"  + Downloaded: {ods_url}")
 
 
 def load_all_rows():
-    from odf.opendocument import load
-    from odf.table import Table, TableRow, TableCell
-    from odf.text import P
-
-    doc = load(ODS_FILE_PATH)
+    doc = load_ods(ODS_FILE_PATH)
     all_rows = []
     for sheet in doc.spreadsheet.getElementsByType(Table):
         for row in sheet.getElementsByType(TableRow):
@@ -102,10 +101,10 @@ def search_application(all_rows, app_number):
 def classify_decision(row_values):
     combined = " ".join(row_values).lower()
     if any(w in combined for w in ["approved", "grant", "approve"]):
-        return "✅ APPROVED"
+        return "APPROVED"
     if any(w in combined for w in ["refused", "refuse", "reject"]):
-        return "❌ REFUSED"
-    return "⚠️ FOUND (check manually)"
+        return "REFUSED"
+    return "FOUND (check manually)"
 
 
 def send_telegram(message):
@@ -114,14 +113,14 @@ def send_telegram(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message}, timeout=10)
-        print("  ✔ Telegram notification sent.")
+        print("  + Telegram notification sent.")
     except Exception as e:
-        print(f"  ✘ Telegram failed: {e}")
+        print(f"  x Telegram failed: {e}")
 
 
 def send_email(subject, body):
     if not NOTIFY_EMAIL or not GMAIL_USER or not GMAIL_PASS:
-        print("  ✘ Email skipped: NOTIFY_EMAIL / GMAIL_USER / GMAIL_PASS secrets not set.")
+        print("  x Email skipped: NOTIFY_EMAIL / GMAIL_USER / GMAIL_PASS secrets not set.")
         return
     try:
         msg = MIMEText(body)
@@ -131,9 +130,9 @@ def send_email(subject, body):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_USER, GMAIL_PASS)
             server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
-        print("  ✔ Email sent.")
+        print("  + Email sent.")
     except Exception as e:
-        print(f"  ✘ Email failed: {e}")
+        print(f"  x Email failed: {e}")
 
 
 def notify(subject, message):
@@ -143,18 +142,17 @@ def notify(subject, message):
 
 
 def main():
-    install_deps()
     now = datetime.now().strftime("%Y-%m-%d %H:%M IST")
 
     if not APPLICATION_NUMBERS:
-        print("  ✘ No application numbers found. Set the APPLICATION_NUMBERS GitHub Secret.")
+        print("  x No application numbers found. Set the APPLICATION_NUMBERS GitHub Secret.")
         return
 
     print(f"[{now}] Checking visa decisions for {len(APPLICATION_NUMBERS)} application(s)...")
 
     try:
         ods_url = get_latest_ods_url()
-        print(f"  ✔ Found decision list: {ods_url}")
+        print(f"  + Found decision list: {ods_url}")
 
         download_ods(ods_url)
         all_rows = load_all_rows()
@@ -168,27 +166,27 @@ def main():
                     decision = classify_decision(row)
                     row_str = " | ".join(str(c) for c in row if str(c).strip())
                     message = (
-                        f"🇮🇪 Ireland Visa Decision Alert\n"
+                        f"Ireland Visa Decision Alert\n"
                         f"Application : {app_number}\n"
                         f"Decision    : {decision}\n"
                         f"Details     : {row_str}\n"
                         f"Source      : {ods_url}\n"
                         f"Checked at  : {now}"
                     )
-                    notify(f"🇮🇪 Visa Decision [{app_number}]: {decision}", message)
+                    notify(f"Visa Decision [{app_number}]: {decision}", message)
             else:
-                print(f"  → No decision yet for application ending in ...{app_number[-4:]}.")
+                print(f"  -> No decision yet for application ending in ...{app_number[-4:]}.")
 
         if not any_found:
-            print("  → No decisions found for any application. Will check again tomorrow.")
+            print("  -> No decisions found for any application. Will check again tomorrow.")
 
     except Exception as e:
         err_msg = (
-            f"🇮🇪 Visa Tracker ERROR\n"
+            f"Ireland Visa Tracker ERROR\n"
             f"Error      : {e}\n"
             f"Checked at : {now}"
         )
-        notify("🇮🇪 Visa Tracker Error", err_msg)
+        notify("Ireland Visa Tracker Error", err_msg)
         raise
 
 
