@@ -36,10 +36,12 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # APPLICATION_NUMBERS secret format: "12345678,87654321"
 APPLICATION_NUMBERS = [n.strip() for n in os.environ.get("APPLICATION_NUMBERS", "").split(",") if n.strip()]
 
+# NOTIFY_EMAIL secret format: "a@gmail.com,b@gmail.com,c@yahoo.com"
+NOTIFY_EMAILS = [e.strip() for e in os.environ.get("NOTIFY_EMAIL", "").split(",") if e.strip()]
+
 DECISIONS_PAGE_URL = "https://www.ireland.ie/en/india/newdelhi/services/visas/processing-times-and-decisions/"
 ODS_FILE_PATH      = "/tmp/visa_decisions.ods"
 
-NOTIFY_EMAIL       = os.environ.get("NOTIFY_EMAIL", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 GMAIL_USER         = os.environ.get("GMAIL_USER", "")
@@ -128,18 +130,19 @@ def send_telegram(message):
 
 
 def send_email(subject, body):
-    if not NOTIFY_EMAIL or not GMAIL_USER or not GMAIL_PASS:
+    if not NOTIFY_EMAILS or not GMAIL_USER or not GMAIL_PASS:
         print("  x Email skipped: NOTIFY_EMAIL / GMAIL_USER / GMAIL_PASS secrets not set.")
         return
     try:
-        msg = MIMEText(body)
-        msg["Subject"] = subject
-        msg["From"] = GMAIL_USER
-        msg["To"] = NOTIFY_EMAIL
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_USER, GMAIL_PASS)
-            server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
-        print("  + Email sent.")
+            for recipient in NOTIFY_EMAILS:
+                msg = MIMEText(body)
+                msg["Subject"] = subject
+                msg["From"] = GMAIL_USER
+                msg["To"] = recipient
+                server.sendmail(GMAIL_USER, recipient, msg.as_string())
+                print(f"  + Email sent to {recipient}.")
     except Exception as e:
         print(f"  x Email failed: {e}")
 
@@ -159,6 +162,7 @@ def main():
         return
 
     print(f"[{now}] Checking visa decisions for {len(APPLICATION_NUMBERS)} application(s)...")
+    print(f"  + Notifying {len(NOTIFY_EMAILS)} recipient(s): {', '.join(NOTIFY_EMAILS)}")
 
     try:
         ods_url = get_latest_ods_url()
