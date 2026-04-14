@@ -48,6 +48,19 @@ GMAIL_USER         = os.environ.get("GMAIL_USER", "")
 GMAIL_PASS         = os.environ.get("GMAIL_PASS", "")
 
 
+def mask_email(email):
+    """Show only first 2 chars and domain, e.g. ar***@gmail.com"""
+    if "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    return local[:2] + "***@" + domain
+
+
+def mask_app_number(number):
+    """Show only last 4 digits, e.g. ****4462"""
+    return "****" + number[-4:] if len(number) >= 4 else "****"
+
+
 def get_latest_ods_url():
     headers = {"User-Agent": "Mozilla/5.0 (compatible; VisaTracker/1.0)"}
     resp = requests.get(DECISIONS_PAGE_URL, headers=headers, timeout=30)
@@ -142,7 +155,7 @@ def send_email(subject, body):
                 msg["From"] = GMAIL_USER
                 msg["To"] = recipient
                 server.sendmail(GMAIL_USER, recipient, msg.as_string())
-                print(f"  + Email sent to {recipient}.")
+                print(f"  + Email sent to {mask_email(recipient)}.")
     except Exception as e:
         print(f"  x Email failed: {e}")
 
@@ -161,8 +174,11 @@ def main():
         print("  x No application numbers found. Set the APPLICATION_NUMBERS GitHub Secret.")
         return
 
-    print(f"[{now}] Checking visa decisions for {len(APPLICATION_NUMBERS)} application(s)...")
-    print(f"  + Notifying {len(NOTIFY_EMAILS)} recipient(s): {', '.join(NOTIFY_EMAILS)}")
+    masked_apps = ", ".join(mask_app_number(n) for n in APPLICATION_NUMBERS)
+    masked_emails = ", ".join(mask_email(e) for e in NOTIFY_EMAILS)
+
+    print(f"[{now}] Checking visa decisions for {len(APPLICATION_NUMBERS)} application(s): {masked_apps}")
+    print(f"  + Notifying {len(NOTIFY_EMAILS)} recipient(s): {masked_emails}")
 
     try:
         ods_url = get_latest_ods_url()
@@ -181,18 +197,18 @@ def main():
                     row_str = " | ".join(str(c) for c in row if str(c).strip())
                     message = (
                         f"Ireland Visa Decision Alert\n"
-                        f"Application : {app_number}\n"
+                        f"Application : {mask_app_number(app_number)}\n"
                         f"Decision    : {decision}\n"
                         f"Details     : {row_str}\n"
                         f"Source      : {ods_url}\n"
                         f"Checked at  : {now}"
                     )
-                    notify(f"Visa Decision [{app_number}]: {decision}", message)
+                    notify(f"Visa Decision [{mask_app_number(app_number)}]: {decision}", message)
             else:
                 pending.append(app_number)
 
         if pending:
-            pending_list = "\n".join(f"  - {n}" for n in pending)
+            pending_list = "\n".join(f"  - {mask_app_number(n)}" for n in pending)
             message = (
                 f"Ireland Visa - No Decision Yet\n"
                 f"The following applications have no decision as of today:\n"
