@@ -49,7 +49,7 @@ GMAIL_PASS         = os.environ.get("GMAIL_PASS", "")
 
 
 def mask_email(email):
-    """Show only first 2 chars and domain, e.g. ar***@gmail.com"""
+    """For logs only: ar***@gmail.com"""
     if "@" not in email:
         return "***"
     local, domain = email.split("@", 1)
@@ -57,7 +57,7 @@ def mask_email(email):
 
 
 def mask_app_number(number):
-    """Show only last 4 digits, e.g. ****4462"""
+    """For logs only: ****4462"""
     return "****" + number[-4:] if len(number) >= 4 else "****"
 
 
@@ -155,15 +155,17 @@ def send_email(subject, body):
                 msg["From"] = GMAIL_USER
                 msg["To"] = recipient
                 server.sendmail(GMAIL_USER, recipient, msg.as_string())
+                # Mask in logs only
                 print(f"  + Email sent to {mask_email(recipient)}.")
     except Exception as e:
         print(f"  x Email failed: {e}")
 
 
-def notify(subject, message):
-    print(f"\n{'='*55}\n{message}\n{'='*55}")
-    send_telegram(message)
-    send_email(subject, message)
+def notify(log_subject, log_message, email_subject, email_message):
+    """log_* versions are masked for console; email_* versions have full details."""
+    print(f"\n{'='*55}\n{log_message}\n{'='*55}")
+    send_telegram(email_message)
+    send_email(email_subject, email_message)
 
 
 def main():
@@ -174,9 +176,10 @@ def main():
         print("  x No application numbers found. Set the APPLICATION_NUMBERS GitHub Secret.")
         return
 
-    masked_apps = ", ".join(mask_app_number(n) for n in APPLICATION_NUMBERS)
+    masked_apps   = ", ".join(mask_app_number(n) for n in APPLICATION_NUMBERS)
     masked_emails = ", ".join(mask_email(e) for e in NOTIFY_EMAILS)
 
+    # Logs: masked
     print(f"[{now}] Checking visa decisions for {len(APPLICATION_NUMBERS)} application(s): {masked_apps}")
     print(f"  + Notifying {len(NOTIFY_EMAILS)} recipient(s): {masked_emails}")
 
@@ -195,29 +198,58 @@ def main():
                 for row in matches:
                     decision = classify_decision(row)
                     row_str = " | ".join(str(c) for c in row if str(c).strip())
-                    message = (
+
+                    # Log: masked
+                    log_msg = (
                         f"Ireland Visa Decision Alert\n"
                         f"Application : {mask_app_number(app_number)}\n"
+                        f"Decision    : {decision}\n"
+                        f"Checked at  : {now}"
+                    )
+                    # Email: full details
+                    email_msg = (
+                        f"Ireland Visa Decision Alert\n"
+                        f"Application : {app_number}\n"
                         f"Decision    : {decision}\n"
                         f"Details     : {row_str}\n"
                         f"Source      : {ods_url}\n"
                         f"Checked at  : {now}"
                     )
-                    notify(f"Visa Decision [{mask_app_number(app_number)}]: {decision}", message)
+                    notify(
+                        log_subject=f"Visa Decision [{mask_app_number(app_number)}]: {decision}",
+                        log_message=log_msg,
+                        email_subject=f"Visa Decision [{app_number}]: {decision}",
+                        email_message=email_msg
+                    )
             else:
                 pending.append(app_number)
 
         if pending:
-            pending_list = "\n".join(f"  - {mask_app_number(n)}" for n in pending)
-            message = (
+            # Log: masked
+            log_pending   = "\n".join(f"  - {mask_app_number(n)}" for n in pending)
+            # Email: full numbers
+            email_pending = "\n".join(f"  - {n}" for n in pending)
+
+            log_msg = (
+                f"Ireland Visa - No Decision Yet\n"
+                f"Applications with no decision as of today:\n"
+                f"{log_pending}\n"
+                f"Checked at : {now}"
+            )
+            email_msg = (
                 f"Ireland Visa - No Decision Yet\n"
                 f"The following applications have no decision as of today:\n"
-                f"{pending_list}\n"
+                f"{email_pending}\n"
                 f"Source     : {ods_url}\n"
                 f"Checked at : {now}\n"
                 f"Will check again tomorrow at 11:10 AM IST."
             )
-            notify("Visa Tracker: No Decision Yet", message)
+            notify(
+                log_subject="Visa Tracker: No Decision Yet",
+                log_message=log_msg,
+                email_subject="Visa Tracker: No Decision Yet",
+                email_message=email_msg
+            )
 
     except Exception as e:
         err_msg = (
@@ -225,7 +257,12 @@ def main():
             f"Error      : {e}\n"
             f"Checked at : {now}"
         )
-        notify("Ireland Visa Tracker Error", err_msg)
+        notify(
+            log_subject="Ireland Visa Tracker Error",
+            log_message=err_msg,
+            email_subject="Ireland Visa Tracker Error",
+            email_message=err_msg
+        )
         raise
 
 
