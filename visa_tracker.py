@@ -92,7 +92,6 @@ def load_all_rows():
             cells = row.getElementsByType(TableCell)
             row_values = []
             for cell in cells:
-                # Use the correct namespaced attribute key
                 repeat_attr = cell.attributes.get((TABLENS, "number-columns-repeated"))
                 repeat = int(repeat_attr) if repeat_attr else 1
                 text = get_cell_text(cell)
@@ -163,12 +162,12 @@ def main():
 
         download_ods(ods_url)
         all_rows = load_all_rows()
-        any_found = False
+
+        pending = []   # applications with no decision yet
 
         for app_number in APPLICATION_NUMBERS:
             matches = search_application(all_rows, app_number)
             if matches:
-                any_found = True
                 for row in matches:
                     decision = classify_decision(row)
                     row_str = " | ".join(str(c) for c in row if str(c).strip())
@@ -182,10 +181,20 @@ def main():
                     )
                     notify(f"Visa Decision [{app_number}]: {decision}", message)
             else:
-                print(f"  -> No decision yet for application ending in ...{app_number[-4:]}.")
+                pending.append(app_number)
 
-        if not any_found:
-            print("  -> No decisions found for any application. Will check again tomorrow.")
+        # Send a single daily summary for all pending applications
+        if pending:
+            pending_list = "\n".join(f"  - {n}" for n in pending)
+            message = (
+                f"Ireland Visa - No Decision Yet\n"
+                f"The following applications have no decision as of today:\n"
+                f"{pending_list}\n"
+                f"Source     : {ods_url}\n"
+                f"Checked at : {now}\n"
+                f"Will check again tomorrow at 11:10 AM IST."
+            )
+            notify("Visa Tracker: No Decision Yet", message)
 
     except Exception as e:
         err_msg = (
