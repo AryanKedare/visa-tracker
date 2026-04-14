@@ -27,6 +27,7 @@ from bs4 import BeautifulSoup
 from odf.opendocument import load as load_ods
 from odf.table import Table, TableRow, TableCell
 from odf.text import P
+from odf.namespaces import TABLENS
 
 # --- ALL CONFIG FROM GITHUB SECRETS (environment variables) ---
 # APPLICATION_NUMBERS secret format: "12345678,87654321"
@@ -73,6 +74,16 @@ def download_ods(ods_url):
     print(f"  + Downloaded: {ods_url}")
 
 
+def get_cell_text(cell):
+    ps = cell.getElementsByType(P)
+    return " ".join(
+        (p.plainText() if hasattr(p, "plainText") else "".join(
+            str(n) for n in p.childNodes if hasattr(n, "data")
+        )).strip()
+        for p in ps
+    )
+
+
 def load_all_rows():
     doc = load_ods(ODS_FILE_PATH)
     all_rows = []
@@ -81,14 +92,10 @@ def load_all_rows():
             cells = row.getElementsByType(TableCell)
             row_values = []
             for cell in cells:
-                repeat = int(cell.getAttribute("numberColumnsRepeated") or 1)
-                ps = cell.getElementsByType(P)
-                text = " ".join(
-                    (p.plainText() if hasattr(p, "plainText") else "".join(
-                        str(n) for n in p.childNodes if hasattr(n, "data")
-                    )).strip()
-                    for p in ps
-                )
+                # Use the correct namespaced attribute key
+                repeat_attr = cell.attributes.get((TABLENS, "number-columns-repeated"))
+                repeat = int(repeat_attr) if repeat_attr else 1
+                text = get_cell_text(cell)
                 row_values.extend([text] * repeat)
             all_rows.append(row_values)
     return all_rows
